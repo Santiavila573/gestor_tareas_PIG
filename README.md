@@ -1,2 +1,3 @@
-# getsor_tareas_PIG
-Gestor de Tareas Scrum + IA 
+# Gestor de Tareas Scrum + IA
+
+### Proyecto Integrador de Grado "Desarrollo de Software" 
