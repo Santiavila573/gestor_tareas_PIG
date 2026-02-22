@@ -1,0 +1,189 @@
+@keyframes border-beam {
+    0% {
+        offset-distance: 0%;
+    }
+
+    100% {
+        offset-distance: 100%;
+    }
+}
+
+.border-beam-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 50;
+    /* Above most content but below modal/overlays */
+    border-radius: inherit;
+    /* Inherit rounded corners if applied to a specific container */
+    overflow: hidden;
+    /* Ensure beam doesn't spill out */
+}
+
+/* 
+  Ideally, we'd use `offset-path: rect(0 100% 100% 0 round 16px)` but it has limited browser support for `rect()`.
+  A more robust way for a "border beam" effect that works everywhere is using a conic gradient mask or 
+  animated pseudo-elements. However, the requested effect is a "comet" traveling along the path.
+  
+  Since we are applying this potentially to the whole viewport or a main container, we can use 4 separate animations 
+  (Top, Right, Bottom, Left) or a specialized SVG path implementation.
+  
+  For a high-performance modern look like Vercel/Firebase, we'll use a mask-image approach with a rotating gradient 
+  BEHIND a 1px transparent border, OR an element moving along the perimeter.
+  
+  Let's simulate the "Comet" using 4 distinct delays on 4 separate lines if the container is rectangular, 
+  OR better yet, a simple pseudo-element with a conic gradient spinning, masked to the border.
+  
+  But the user asked specifically for a "comet/lightning" TRAVELLING ALONG THE BORDER.
+  Best approach without complex SVG paths for responsive containers:
+  4 Keyframes, moving a small glowing element around the corners.
+*/
+
+.beam-comet {
+    position: absolute;
+    background: linear-gradient(to right, transparent, #6366f1, #a855f7, #ec4899);
+    /* Indigo to Pink */
+    filter: blur(4px);
+    width: 100px;
+    /* Length of the tail */
+    height: 2px;
+    animation: beam-travel 8s linear infinite;
+    opacity: 0.8;
+    border-radius: 999px;
+    box-shadow: 0 0 10px 2px rgba(99, 102, 241, 0.5);
+}
+
+@keyframes beam-travel {
+    0% {
+        left: 0;
+        top: 0;
+        transform: translateX(-100%);
+        width: 150px;
+        height: 2px;
+    }
+
+    24.9% {
+        left: 100%;
+        top: 0;
+        transform: translateX(0);
+        width: 150px;
+        height: 2px;
+    }
+
+    25% {
+        left: 100%;
+        top: 0;
+        transform: translateY(-100%);
+        width: 2px;
+        height: 150px;
+    }
+
+    49.9% {
+        left: 100%;
+        top: 100%;
+        transform: translateY(0);
+        width: 2px;
+        height: 150px;
+    }
+
+    50% {
+        left: 100%;
+        top: 100%;
+        transform: translateX(0);
+        width: 150px;
+        height: 2px;
+    }
+
+    74.9% {
+        left: 0;
+        top: 100%;
+        transform: translateX(-100%);
+        width: 150px;
+        height: 2px;
+    }
+
+    75% {
+        left: 0;
+        top: 100%;
+        transform: translateY(0);
+        width: 2px;
+        height: 150px;
+    }
+
+    99.9% {
+        left: 0;
+        top: 0;
+        transform: translateY(-100%);
+        width: 2px;
+        height: 150px;
+    }
+
+    100% {
+        left: 0;
+        top: 0;
+        transform: translateX(0);
+        width: 150px;
+        height: 2px;
+    }
+}
+
+/* 
+   Actually, the above is tricky to make perfectly smooth responsive.
+   Let's try the modern popular "Gradient Border Beam" approach which is a pseudo element spinning 
+   masked to the border area.
+*/
+
+.border-gradient {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 9999;
+}
+
+.border-gradient::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 0;
+    padding: 4px;
+    /* Thicker border */
+    background: conic-gradient(from var(--angle),
+            transparent 50%,
+            #6366f1 70%,
+            #a855f7 85%,
+            #ec4899 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    animation: spin-beam 3s linear infinite;
+    /* Faster */
+    opacity: 1;
+    /* Fully opaque */
+    filter: drop-shadow(0 0 8px rgba(236, 72, 153, 0.8));
+    /* Strong Glow */
+}
+
+@property --angle {
+    syntax: "<angle>";
+    initial-value: 0deg;
+    inherits: false;
+}
+
+@keyframes spin-beam {
+    from {
+        --angle: 0deg;
+    }
+
+    to {
+        --angle: 360deg;
+    }
+}

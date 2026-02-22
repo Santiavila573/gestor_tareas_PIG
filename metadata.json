@@ -1,0 +1,5 @@
+{
+  "name": "GestorTasks AI - Gestor de Tareas Inteligente",
+  "description": "Un gestor de tareas colaborativo para Scrum potenciado por Gemini AI para reportes automatizados, análisis de sprints y seguimiento inteligente.",
+  "requestFramePermissions": []
+}

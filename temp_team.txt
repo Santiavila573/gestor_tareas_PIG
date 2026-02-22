@@ -1,0 +1,291 @@
+import React, { useState } from 'react';
+import { User, Role } from '../types';
+import { Plus, Edit2, Trash2, User as UserIcon, Shield, X, Save, Search, Code, Briefcase, UserCog, Image as ImageIcon } from 'lucide-react';
+
+interface TeamProps {
+  users: User[];
+  currentUser: User | null;
+  onAddUser: (user: Omit<User, 'id'>) => void;
+  onUpdateUser: (user: User) => void;
+  onDeleteUser: (userId: string) => void;
+}
+
+const Team: React.FC<TeamProps> = ({ users, currentUser, onAddUser, onUpdateUser, onDeleteUser }) => {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Form State
+  const [formData, setFormData] = useState({
+    name: '',
+    role: Role.DEVELOPER,
+    avatar: ''
+  });
+
+  const handleOpenModal = (user?: User) => {
+    if (user) {
+      setEditingUser(user);
+      setFormData({
+        name: user.name,
+        role: user.role,
+        avatar: user.avatar
+      });
+    } else {
+      setEditingUser(null);
+      setFormData({
+        name: '',
+        role: Role.DEVELOPER,
+        avatar: `https://picsum.photos/200?random=${Date.now()}` // Default random avatar
+      });
+    }
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const submitData = {
+      ...formData,
+      avatar: formData.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name)}&background=random`
+    };
+
+    if (editingUser) {
+      onUpdateUser({ ...editingUser, ...submitData });
+    } else {
+      onAddUser(submitData);
+    }
+    setIsModalOpen(false);
+  };
+
+  const getRoleIcon = (role: Role) => {
+    switch (role) {
+      case Role.SCRUM_MASTER: return <UserCog className="w-4 h-4" />;
+      case Role.PRODUCT_OWNER: return <Briefcase className="w-4 h-4" />;
+      case Role.DEVELOPER: return <Code className="w-4 h-4" />;
+      default: return <UserIcon className="w-4 h-4" />;
+    }
+  };
+
+  const getRoleColor = (role: Role) => {
+    switch (role) {
+      case Role.SCRUM_MASTER: return 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800';
+      case Role.PRODUCT_OWNER: return 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800';
+      case Role.DEVELOPER: return 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800';
+      default: return 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
+    }
+  };
+
+  const filteredUsers = users.filter(u =>
+    u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    u.role.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <div className="p-6 h-full overflow-y-auto">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Equipo</h1>
+          <p className="text-slate-500 dark:text-slate-400">Gestiona los miembros, roles y permisos del proyecto.</p>
+        </div>
+        <div className="flex gap-3 w-full md:w-auto">
+          <div className="relative flex-1 md:w-64">
+            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar miembro..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-[#7b68ee] focus:outline-none shadow-sm placeholder-slate-400"
+            />
+          </div>
+          {currentUser?.role === 'Scrum Master' && (
+            <button
+              onClick={() => handleOpenModal()}
+              className="flex items-center gap-2 bg-[#7b68ee] text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-[#6b58de] transition-all shadow-lg shadow-[#7b68ee]/20 active:scale-95 whitespace-nowrap"
+            >
+              <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Nuevo Miembro</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {filteredUsers.map(user => (
+          <div key={user.id} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 p-6 flex flex-col items-center group relative overflow-hidden">
+
+            {/* Background decoration */}
+            <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900 z-0"></div>
+
+            {/* Actions */}
+            {currentUser?.role === 'Scrum Master' && (
+              <div className="absolute top-3 right-3 flex gap-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={() => handleOpenModal(user)}
+                  className="p-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm text-slate-500 hover:text-[#7b68ee] dark:text-slate-400 dark:hover:text-[#a89aff] rounded-lg shadow-sm hover:shadow border border-slate-200/50 dark:border-slate-700 transition-all"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => onDeleteUser(user.id)}
+                  className="p-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 rounded-lg shadow-sm hover:shadow border border-slate-200/50 dark:border-slate-700 transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Avatar */}
+            <div className="relative z-10 mb-4 mt-4">
+              <div className="w-24 h-24 rounded-full p-1 bg-white dark:bg-slate-900 shadow-lg">
+                <img
+                  src={user.avatar}
+                  alt={user.name}
+                  className="w-full h-full rounded-full object-cover border border-slate-100 dark:border-slate-800"
+                />
+              </div>
+              <div className="absolute bottom-1 right-1 w-5 h-5 bg-green-500 border-2 border-white dark:border-slate-900 rounded-full" title="Online"></div>
+            </div>
+
+            {/* Content */}
+            <div className="text-center z-10 w-full">
+              <h3 className="font-bold text-slate-800 dark:text-white text-lg mb-1">{user.name}</h3>
+
+              <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border mb-4 ${getRoleColor(user.role)}`}>
+                {getRoleIcon(user.role)}
+                {user.role}
+              </div>
+
+              <div className="w-full pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-center gap-6">
+                <div className="text-center">
+                  <span className="block font-bold text-slate-700 dark:text-slate-300 text-sm">12</span>
+                  <span className="text-xs text-slate-400 dark:text-slate-500">Tareas</span>
+                </div>
+                <div className="text-center">
+                  <span className="block font-bold text-slate-700 dark:text-slate-300 text-sm">98%</span>
+                  <span className="text-xs text-slate-400 dark:text-slate-500">Eficacia</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {filteredUsers.length === 0 && (
+          <div className="col-span-full py-20 text-center">
+            <div className="inline-block p-4 bg-slate-50 dark:bg-slate-900 rounded-full mb-4">
+              <Search className="w-8 h-8 text-slate-300 dark:text-slate-600" />
+            </div>
+            <p className="text-slate-500 dark:text-slate-400 font-medium">No se encontraron miembros</p>
+          </div>
+        )}
+      </div>
+
+      {/* Modern Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-white/20 dark:border-slate-800 transform transition-all scale-100">
+            {/* Modal Header */}
+            <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-[#7b68ee]/10 dark:bg-[#7b68ee]/20 rounded-lg text-[#7b68ee] dark:text-[#a89aff]">
+                  <UserIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-slate-800 dark:text-white leading-none">
+                    {editingUser ? 'Editar Miembro' : 'Nuevo Miembro'}
+                  </h3>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 p-2 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="p-6 space-y-5">
+              {/* Name Field */}
+              <div className="space-y-1.5">
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">Nombre Completo</label>
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <UserIcon className="h-5 w-5 text-slate-400 group-focus-within:text-[#7b68ee] transition-colors" />
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="block w-full pl-10 pr-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-sm placeholder-slate-400 focus:outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-[#7b68ee] focus:ring-4 focus:ring-[#7b68ee]/10 transition-all duration-200"
+                    placeholder="Ej. Ana García"
+                  />
+                </div>
+              </div>
+
+              {/* Role Field */}
+              <div className="space-y-1.5">
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">Rol del Proyecto</label>
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Shield className="h-5 w-5 text-slate-400 group-focus-within:text-[#7b68ee] transition-colors" />
+                  </div>
+                  <select
+                    value={formData.role}
+                    onChange={(e) => setFormData({ ...formData, role: e.target.value as Role })}
+                    className="block w-full pl-10 pr-10 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-sm focus:outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-[#7b68ee] focus:ring-4 focus:ring-[#7b68ee]/10 transition-all duration-200 appearance-none cursor-pointer"
+                  >
+                    {Object.values(Role).map(role => (
+                      <option key={role} value={role}>{role}</option>
+                    ))}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                    <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              {/* Avatar Field */}
+              <div className="space-y-1.5">
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">URL Avatar (Opcional)</label>
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <ImageIcon className="h-5 w-5 text-slate-400 group-focus-within:text-[#7b68ee] transition-colors" />
+                  </div>
+                  <input
+                    type="text"
+                    value={formData.avatar}
+                    onChange={(e) => setFormData({ ...formData, avatar: e.target.value })}
+                    className="block w-full pl-10 pr-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-sm placeholder-slate-400 focus:outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-[#7b68ee] focus:ring-4 focus:ring-[#7b68ee]/10 transition-all duration-200"
+                    placeholder="https://ejemplo.com/foto.jpg"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 px-1">Si se deja vacío, se generará uno automáticamente.</p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4 border-t border-slate-50 dark:border-slate-800 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-white transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2.5 bg-[#7b68ee] text-white rounded-xl text-sm font-medium hover:bg-[#6b58de] shadow-lg shadow-[#7b68ee]/20 flex justify-center items-center gap-2 transition-all active:scale-95"
+                >
+                  <Save className="w-4 h-4" />
+                  {editingUser ? 'Guardar Cambios' : 'Añadir Miembro'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Team;

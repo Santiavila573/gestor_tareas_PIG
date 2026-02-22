@@ -1,0 +1,932 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { User, Role } from '../types';
+import {
+    Hash, Plus, Image as ImageIcon, Smile, Send,
+    Phone, Video, Info, FileText, Lock, User as UserIcon, X,
+    Paperclip, Check, Download, ArrowLeft, Menu, LogOut, ChevronLeft,
+    MoreHorizontal, Edit2, Trash2, Reply, Bold, Italic, List, Code, Link, AtSign,
+    Search, Bell, Star, MoreVertical
+} from 'lucide-react';
+
+interface TeamChatProps {
+    currentUser: User | null;
+    users: User[];
+    onClose?: () => void;
+}
+
+interface Attachment {
+    type: 'image' | 'file';
+    url: string;
+    name: string;
+    size?: string;
+    mimeType?: string;
+}
+
+interface Reaction {
+    emoji: string;
+    count: number;
+    userIds: string[];
+}
+
+interface Message {
+    id: string;
+    channelId: string;
+    senderId: string;
+    content: string;
+    timestamp: Date;
+    attachments?: Attachment[];
+    readBy: string[];
+    reactions?: Reaction[];
+    isEdited?: boolean;
+    replyToId?: string;
+}
+
+interface Channel {
+    id: string;
+    name: string;
+    type: 'public' | 'private' | 'dm';
+    members?: string[];
+    description?: string;
+    isStarred?: boolean;
+}
+
+const MOCK_CHANNELS: Channel[] = [
+    { id: 'c1', name: 'general', type: 'public', description: 'Discusión general del equipo' },
+    { id: 'c2', name: 'anuncios', type: 'public', description: 'Noticias importantes y actualizaciones' },
+    { id: 'c3', name: 'sprint-11', type: 'public', description: 'Coordinación del sprint actual' },
+    { id: 'c4', name: 'proyecto-api', type: 'private', description: 'Desarrollo del backend' },
+    { id: 'c5', name: 'dev-team', type: 'private', description: 'Solo desarrolladores' },
+];
+
+const MOCK_MESSAGES: Message[] = [
+    { id: 'm1', channelId: 'c1', senderId: 'u2', content: '¿Alguien ha revisado los últimos cambios en la API?', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2), readBy: ['u2'], reactions: [{ emoji: '👀', count: 2, userIds: ['u1', 'u3'] }] },
+    { id: 'm2', channelId: 'c1', senderId: 'u3', content: 'Sí, ya hice el merge. Todo parece estar estable.', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 1.9), readBy: ['u2', 'u3'], reactions: [{ emoji: '🚀', count: 1, userIds: ['u2'] }] },
+    { id: 'm3', channelId: 'c1', senderId: 'u1', content: 'Perfecto. Recordad actualizar la documentación.', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 1.8), readBy: ['u1', 'u2', 'u3'] },
+];
+
+const COMMON_EMOJIS = ['👍', '👋', '🎉', '🚀', '😄', '😂', '🔥', '❤️', '✅', '👀', '🤔', '🙌', '💯', '✨', '💻', '🐛'];
+const CHAT_STORAGE_KEY = 'scrum_team_chat_messages_v2';
+const CHAT_CHANNELS_KEY = 'scrum_team_chat_channels_v2';
+
+const TeamChat: React.FC<TeamChatProps> = ({ currentUser, users = [], onClose }) => {
+    const [channels, setChannels] = useState<Channel[]>(() => {
+        try {
+            const saved = localStorage.getItem(CHAT_CHANNELS_KEY);
+            return saved ? JSON.parse(saved) : MOCK_CHANNELS;
+        } catch (e) {
+            console.error("Error loading chat channels", e);
+            return MOCK_CHANNELS;
+        }
+    });
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(CHAT_CHANNELS_KEY, JSON.stringify(channels));
+        } catch (e) {
+            console.error("Error saving chat channels", e);
+        }
+    }, [channels]);
+
+    const [activeChannelId, setActiveChannelId] = useState(() => {
+        try {
+            const saved = localStorage.getItem('scrum_team_chat_active_channel_v2');
+            return saved || 'c1';
+        } catch (e) {
+            return 'c1';
+        }
+    });
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('scrum_team_chat_active_channel_v2', activeChannelId);
+        } catch (e) {
+            console.error("Error saving active channel", e);
+        }
+    }, [activeChannelId]);
+    const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
+    const safeUsers = Array.isArray(users) ? users : [];
+
+    const getDmChannelId = (uid1: string, uid2: string) => [uid1, uid2].sort().join('_');
+
+    const [messages, setMessages] = useState<Message[]>(() => {
+        try {
+            const saved = localStorage.getItem(CHAT_STORAGE_KEY);
+            if (saved) {
+                const parsedMessages: Message[] = JSON.parse(saved);
+                return parsedMessages.map(msg => ({
+                    ...msg,
+                    channelId: msg.channelId || 'c1',
+                    timestamp: new Date(msg.timestamp),
+                    readBy: msg.readBy || [msg.senderId]
+                }));
+            }
+        } catch (e) { console.error("Error loading chat messages", e); }
+        return MOCK_MESSAGES.map(m => ({ ...m, channelId: 'c1', readBy: m.readBy || [m.senderId] }));
+    });
+
+    const [inputText, setInputText] = useState('');
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const [previewImage, setPreviewImage] = useState<string | null>(null);
+    const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+    const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
+    const [isSearchOpen, setIsSearchOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showChannelInfo, setShowChannelInfo] = useState(false);
+
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const emojiPickerRef = useRef<HTMLDivElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    const [showCreateChannel, setShowCreateChannel] = useState(false);
+    const [newChannelName, setNewChannelName] = useState('');
+    const [newChannelDesc, setNewChannelDesc] = useState('');
+    const [newChannelPrivate, setNewChannelPrivate] = useState(false);
+
+    const handleCreateChannel = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newChannelName.trim()) return;
+        
+        const newChannel: Channel = {
+            id: `c${Date.now()}`,
+            name: newChannelName.toLowerCase().replace(/\s+/g, '-'),
+            type: newChannelPrivate ? 'private' : 'public',
+            description: newChannelDesc,
+            members: newChannelPrivate && currentUser ? [currentUser.id] : undefined
+        };
+        
+        setChannels([...channels, newChannel]);
+        setActiveChannelId(newChannel.id);
+        setShowCreateChannel(false);
+        setNewChannelName('');
+        setNewChannelDesc('');
+        setNewChannelPrivate(false);
+    };
+
+    const saveMessages = (newMessages: Message[]) => {
+        try {
+            setMessages(newMessages);
+            localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(newMessages));
+        } catch (e) {
+            console.error("Storage full or error", e);
+            setMessages(newMessages);
+        }
+    };
+
+    // Auto-scroll logic
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages.length, activeChannelId]);
+
+    // Mark read logic
+    useEffect(() => {
+        if (!currentUser) return;
+        const unreadInCurrent = messages.filter(m => m.channelId === activeChannelId && !m.readBy.includes(currentUser.id));
+        if (unreadInCurrent.length > 0) {
+            const updatedMessages = messages.map(m => {
+                if (m.channelId === activeChannelId && !m.readBy.includes(currentUser.id)) {
+                    return { ...m, readBy: [...m.readBy, currentUser.id] };
+                }
+                return m;
+            });
+            saveMessages(updatedMessages);
+        }
+    }, [activeChannelId, messages.length, currentUser]);
+
+    // Click outside emoji picker
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node) && !((event.target as HTMLElement).closest('.emoji-trigger'))) {
+                setShowEmojiPicker(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const handleChannelSelect = (id: string) => {
+        setActiveChannelId(id);
+        setMobileView('chat');
+        setEditingMessageId(null);
+        setInputText('');
+    };
+
+    const handleSendMessage = (attachments: Attachment[] = []) => {
+        if ((!inputText.trim() && attachments.length === 0) || !currentUser) return;
+
+        if (editingMessageId) {
+            const updatedMessages = messages.map(m =>
+                m.id === editingMessageId
+                    ? { ...m, content: inputText, isEdited: true }
+                    : m
+            );
+            saveMessages(updatedMessages);
+            setEditingMessageId(null);
+        } else {
+            const newMessage: Message = {
+                id: Date.now().toString(),
+                channelId: activeChannelId,
+                senderId: currentUser.id,
+                content: inputText,
+                timestamp: new Date(),
+                readBy: [currentUser.id],
+                attachments: attachments.length > 0 ? attachments : undefined
+            };
+            saveMessages([...messages, newMessage]);
+        }
+        setInputText('');
+        setShowEmojiPicker(false);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSendMessage();
+        }
+        if (e.key === 'Escape' && editingMessageId) {
+            setEditingMessageId(null);
+            setInputText('');
+        }
+    };
+
+    const triggerFileUpload = (acceptImagesOnly: boolean = false) => {
+        if (fileInputRef.current) {
+            fileInputRef.current.accept = acceptImagesOnly
+                ? "image/png,image/jpeg,image/jpg"
+                : "*/*";
+            fileInputRef.current.click();
+        }
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const isImage = file.type.startsWith('image/');
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64 = reader.result as string;
+            const isTooBig = file.size > 2 * 1024 * 1024;
+            if (isTooBig) {
+                alert("Archivo demasiado grande (>2MB).");
+                return;
+            }
+
+            const attachment: Attachment = {
+                type: isImage ? 'image' : 'file',
+                name: file.name,
+                url: base64,
+                size: (file.size / 1024).toFixed(1) + ' KB',
+                mimeType: file.type
+            };
+
+            const newMessage: Message = {
+                id: Date.now().toString(),
+                channelId: activeChannelId,
+                senderId: currentUser?.id || 'guest',
+                content: isImage ? '' : `📎 Archivo adjunto: ${file.name}`,
+                timestamp: new Date(),
+                readBy: [currentUser?.id || 'guest'],
+                attachments: [attachment]
+            };
+            saveMessages([...messages, newMessage]);
+        };
+        if (file) reader.readAsDataURL(file);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const addEmoji = (emoji: string) => setInputText(prev => prev + emoji);
+    
+    const handleAddReaction = (messageId: string, emoji: string) => {
+        if (!currentUser) return;
+        const updatedMessages = messages.map(msg => {
+            if (msg.id !== messageId) return msg;
+
+            const existingReactions = msg.reactions || [];
+            const reactionIndex = existingReactions.findIndex(r => r.emoji === emoji);
+
+            let newReactions;
+            if (reactionIndex >= 0) {
+                const reaction = existingReactions[reactionIndex];
+                if (reaction.userIds.includes(currentUser.id)) {
+                    // Remove reaction
+                    const newUserIds = reaction.userIds.filter(id => id !== currentUser.id);
+                    if (newUserIds.length === 0) {
+                        newReactions = existingReactions.filter(r => r.emoji !== emoji);
+                    } else {
+                        newReactions = existingReactions.map(r => r.emoji === emoji ? { ...r, count: r.count - 1, userIds: newUserIds } : r);
+                    }
+                } else {
+                    // Add to existing
+                    newReactions = existingReactions.map(r => r.emoji === emoji ? { ...r, count: r.count + 1, userIds: [...r.userIds, currentUser.id] } : r);
+                }
+            } else {
+                // Create new reaction
+                newReactions = [...existingReactions, { emoji, count: 1, userIds: [currentUser.id] }];
+            }
+            return { ...msg, reactions: newReactions };
+        });
+        saveMessages(updatedMessages);
+        setShowEmojiPicker(false);
+    };
+
+    const handleDeleteMessage = (messageId: string) => {
+        if (window.confirm('¿Estás seguro de querer eliminar este mensaje?')) {
+            const updatedMessages = messages.filter(m => m.id !== messageId);
+            saveMessages(updatedMessages);
+        }
+    };
+
+    const startEditing = (message: Message) => {
+        setEditingMessageId(message.id);
+        setInputText(message.content);
+        if (fileInputRef.current) fileInputRef.current.focus();
+    };
+
+    const getUnreadCount = (channelId: string) => currentUser ? messages.filter(m => m.channelId === channelId && !m.readBy.includes(currentUser.id)).length : 0;
+
+    const insertFormat = (format: string) => {
+        if (!textareaRef.current) return;
+        
+        const start = textareaRef.current.selectionStart;
+        const end = textareaRef.current.selectionEnd;
+        const text = textareaRef.current.value;
+        const before = text.substring(0, start);
+        const selection = text.substring(start, end);
+        const after = text.substring(end);
+        
+        let newText = '';
+        let newCursorPos = end;
+
+        switch (format) {
+            case 'bold':
+                newText = `${before}**${selection}**${after}`;
+                newCursorPos = end + 2; // Position after the closing ** if selection exists, or between them if not
+                if (!selection) newCursorPos = start + 2;
+                else newCursorPos = end + 4;
+                break;
+            case 'italic':
+                newText = `${before}_${selection}_${after}`;
+                if (!selection) newCursorPos = start + 1;
+                else newCursorPos = end + 2;
+                break;
+            case 'list':
+                newText = `${before}\n- ${selection}${after}`;
+                newCursorPos = end + 3;
+                break;
+            case 'code':
+                newText = `${before}\`\`\`\n${selection}\n\`\`\`${after}`;
+                if (!selection) newCursorPos = start + 4;
+                else newCursorPos = end + 8;
+                break;
+            case 'link':
+                newText = `${before}[${selection || 'text'}](url)${after}`;
+                newCursorPos = start + 1; // Highlight 'text'
+                break;
+        }
+
+        setInputText(newText);
+        setTimeout(() => {
+            if (textareaRef.current) {
+                textareaRef.current.focus();
+                textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+            }
+        }, 0);
+    };
+
+    const handleReply = (message: Message) => {
+        const quote = `> ${message.content.split('\n').join('\n> ')}\n\n`;
+        setInputText(prev => prev + quote);
+        if (textareaRef.current) {
+            textareaRef.current.focus();
+        }
+    };
+
+    // Sidebar & Header Logic
+    let activeChannelName = '', activeChannelIcon = <Hash className="w-5 h-5" />, activeChannelDesc = '';
+    const mockChannel = channels.find(c => c.id === activeChannelId);
+    if (mockChannel) {
+        activeChannelName = mockChannel.name;
+        activeChannelDesc = mockChannel.description || (mockChannel.type === 'private' ? 'Canal privado' : 'Discusión general');
+        activeChannelIcon = mockChannel.type === 'private' ? <Lock className="w-4 h-4" /> : <Hash className="w-4 h-4" />;
+    } else {
+        const ids = activeChannelId.split('_');
+        const otherId = ids.find(id => id !== (currentUser?.id || 'guest'));
+        const otherUser = safeUsers.find(u => u.id === otherId);
+        if (otherUser) {
+            activeChannelName = otherUser.name;
+            activeChannelDesc = otherUser.role || 'Chat Directo';
+            activeChannelIcon = otherUser.avatar ? <img src={otherUser.avatar} alt={otherUser.name} className="w-5 h-5 rounded" /> : <div className="w-5 h-5 rounded bg-[#7b68ee] text-white flex items-center justify-center text-xs font-bold">{otherUser.name.charAt(0)}</div>;
+        }
+    }
+
+    const currentMessages = messages.filter(m => {
+        if (m.channelId !== activeChannelId) return false;
+        if (searchQuery) {
+            return m.content.toLowerCase().includes(searchQuery.toLowerCase());
+        }
+        return true;
+    });
+
+    // Group messages by date
+    const groupedMessages: { date: string; msgs: Message[] }[] = [];
+    currentMessages.forEach(msg => {
+        const dateStr = msg.timestamp.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        const lastGroup = groupedMessages[groupedMessages.length - 1];
+        if (lastGroup && lastGroup.date === dateStr) {
+            lastGroup.msgs.push(msg);
+        } else {
+            groupedMessages.push({ date: dateStr, msgs: [msg] });
+        }
+    });
+
+    return (
+        <div className="flex h-full bg-white dark:bg-slate-950 overflow-hidden">
+            {/* Image Preview Modal */}
+            {previewImage && (
+                <div className="fixed inset-0 z-[200] bg-black/90 flex flex-col items-center justify-center p-4 backdrop-blur-sm">
+                    <button onClick={() => setPreviewImage(null)} className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all"><X className="w-6 h-6" /></button>
+                    <img src={previewImage} alt="Preview" className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain" />
+                    <a href={previewImage} download="imagen.png" className="mt-4 flex items-center gap-2 px-6 py-2 bg-[#7b68ee] text-white rounded-full font-medium hover:bg-[#6b58de] transition-colors"><Download className="w-4 h-4" /> Descargar Original</a>
+                </div>
+            )}
+
+            {/* Create Channel Modal */}
+            {showCreateChannel && (
+                <div className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-slate-900 rounded-lg shadow-xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-slate-700">
+                        <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800">
+                            <h3 className="font-bold text-lg text-slate-800 dark:text-white">Crear nuevo canal</h3>
+                            <button onClick={() => setShowCreateChannel(false)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
+                                <X className="w-5 h-5 text-slate-500" />
+                            </button>
+                        </div>
+                        <form onSubmit={handleCreateChannel} className="p-4 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Nombre del canal</label>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-2.5 text-slate-400">#</span>
+                                    <input
+                                        type="text"
+                                        value={newChannelName}
+                                        onChange={e => setNewChannelName(e.target.value)}
+                                        placeholder="ej. proyectos-2024"
+                                        className="w-full pl-7 pr-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md focus:ring-2 focus:ring-[#7b68ee] outline-none text-slate-800 dark:text-white"
+                                        maxLength={80}
+                                        autoFocus
+                                    />
+                                </div>
+                                <p className="mt-1 text-xs text-slate-500">Los canales son donde tu equipo se comunica. Es mejor organizarlos por tema.</p>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Descripción (opcional)</label>
+                                <input
+                                    type="text"
+                                    value={newChannelDesc}
+                                    onChange={e => setNewChannelDesc(e.target.value)}
+                                    placeholder="¿De qué trata este canal?"
+                                    className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md focus:ring-2 focus:ring-[#7b68ee] outline-none text-slate-800 dark:text-white"
+                                />
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    id="private-channel"
+                                    checked={newChannelPrivate}
+                                    onChange={e => setNewChannelPrivate(e.target.checked)}
+                                    className="rounded border-slate-300 text-[#7b68ee] focus:ring-[#7b68ee]"
+                                />
+                                <label htmlFor="private-channel" className="text-sm text-slate-700 dark:text-slate-300 select-none cursor-pointer">
+                                    Hacer privado
+                                </label>
+                            </div>
+                            {newChannelPrivate && (
+                                <p className="text-xs text-slate-500 ml-6">Solo los miembros invitados podrán ver este canal.</p>
+                            )}
+                            <div className="flex justify-end gap-3 mt-6">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCreateChannel(false)}
+                                    className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={!newChannelName.trim()}
+                                    className="px-4 py-2 text-sm font-medium text-white bg-[#7b68ee] hover:bg-[#6b58de] rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Crear Canal
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Sidebar - Slack Style */}
+            <div className={`
+                ${mobileView === 'list' ? 'flex' : 'hidden'} lg:flex w-full lg:w-[260px] bg-[#1a1d21] dark:bg-[#0f1115] text-[#b0b2b5] flex-col shrink-0 transition-all duration-300 border-r border-slate-700/30
+            `}>
+                {/* Workspace Header */}
+                <div className="h-12 px-4 flex items-center justify-between border-b border-slate-700/50 hover:bg-slate-800/30 cursor-pointer transition-colors duration-200">
+                    <h2 className="font-bold text-white truncate text-[15px]">Espacio de Trabajo</h2>
+                    <button className="p-1.5 bg-white text-slate-900 rounded-full hover:opacity-90 transition-opacity"><Edit2 className="w-3.5 h-3.5" /></button>
+                </div>
+
+                {/* Navigation Items */}
+                <div className="flex-1 overflow-y-auto py-3 px-2 custom-scrollbar">
+                    {/* Sections */}
+                    <div className="mb-6">
+                        <div className="px-3 flex items-center justify-between group mb-1">
+                            <h3 className="text-[13px] font-medium text-slate-400 group-hover:text-slate-300 transition-colors">Canales</h3>
+                            <button onClick={() => setShowCreateChannel(true)} className="text-slate-400 opacity-0 group-hover:opacity-100 cursor-pointer hover:text-white transition-opacity">
+                                <Plus className="w-4 h-4" />
+                            </button>
+                        </div>
+                        <div className="space-y-[1px]">
+                            {channels.map(channel => (
+                                <button
+                                    key={channel.id}
+                                    onClick={() => handleChannelSelect(channel.id)}
+                                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[4px] text-[15px] transition-all duration-200 ${
+                                        activeChannelId === channel.id 
+                                        ? 'bg-[#1164A3] text-white font-medium' 
+                                        : 'hover:bg-white/10 text-[#b0b2b5] hover:text-slate-100'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-2 truncate">
+                                        <span className="opacity-70 shrink-0">{channel.type === 'private' ? <Lock className="w-3.5 h-3.5" /> : <Hash className="w-3.5 h-3.5" />}</span>
+                                        <span className="truncate">{channel.name}</span>
+                                    </div>
+                                    {getUnreadCount(channel.id) > 0 && <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 h-4 flex items-center rounded-full">{getUnreadCount(channel.id)}</span>}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div>
+                        <div className="px-3 flex items-center justify-between group mb-1">
+                            <h3 className="text-[13px] font-medium text-slate-400 group-hover:text-slate-300 transition-colors">Mensajes Directos</h3>
+                            <Plus className="w-4 h-4 text-slate-400 opacity-0 group-hover:opacity-100 cursor-pointer hover:text-white" />
+                        </div>
+                        <div className="space-y-[1px]">
+                            {safeUsers.filter(u => u.id !== currentUser?.id).map(user => {
+                                const dmId = getDmChannelId(currentUser?.id || 'guest', user.id);
+                                const isOnline = user.status === 'active'; // In a real app this would be real-time
+                                return (
+                                    <button
+                                        key={user.id}
+                                        onClick={() => handleChannelSelect(dmId)}
+                                        className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[4px] text-[15px] transition-all duration-200 ${
+                                        activeChannelId === dmId 
+                                        ? 'bg-[#1164A3] text-white font-medium' 
+                                        : 'hover:bg-white/10 text-[#b0b2b5] hover:text-slate-100'
+                                    }`}
+                                    >
+                                        <div className="flex items-center gap-2 truncate">
+                                            <div className="relative shrink-0">
+                                                {user.avatar ? <img src={user.avatar} alt="" className="w-4 h-4 rounded-[3px]" /> : <div className="w-4 h-4 rounded-[3px] bg-slate-600 flex items-center justify-center text-[9px] font-bold text-white">{user.name.charAt(0)}</div>}
+                                                <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#1a1d21] ${isOnline ? 'bg-green-500' : 'border-slate-500 bg-transparent'}`}></span>
+                                            </div>
+                                            <span className="truncate">{user.name}</span>
+                                        </div>
+                                        {getUnreadCount(dmId) > 0 && <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 h-4 flex items-center rounded-full">{getUnreadCount(dmId)}</span>}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+                
+                {onClose && (
+                    <div className="p-3 border-t border-slate-700/50">
+                        <button onClick={onClose} className="w-full flex items-center gap-2 px-3 py-2 text-slate-400 hover:text-white hover:bg-slate-800/60 rounded-[4px] transition-colors text-sm">
+                            <LogOut className="w-4 h-4" /> Salir del Chat
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* Main Chat Area */}
+            <div className={`
+                ${mobileView === 'chat' ? 'flex' : 'hidden'} lg:flex flex-1 flex-col bg-white dark:bg-slate-900 relative h-full w-full
+            `}>
+                {/* Chat Header */}
+                <header className="h-16 px-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0 bg-white dark:bg-slate-900 z-10">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <button onClick={() => setMobileView('list')} className="lg:hidden p-1.5 -ml-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md">
+                            <ChevronLeft className="w-5 h-5" />
+                        </button>
+                        <div className="font-bold text-slate-800 dark:text-white text-lg flex items-center gap-2 truncate">
+                            <span className="text-slate-400 shrink-0">{activeChannelIcon}</span>
+                            {activeChannelName}
+                        </div>
+                        {activeChannelDesc && (
+                            <span className="hidden md:inline-block text-sm text-slate-500 dark:text-slate-400 truncate max-w-md border-l border-slate-300 dark:border-slate-700 pl-3 ml-1">
+                                {activeChannelDesc}
+                            </span>
+                        )}
+                    </div>
+                    
+                    <div className="flex items-center gap-3 text-slate-400">
+                        {isSearchOpen ? (
+                            <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-full px-3 py-1.5 animate-in fade-in zoom-in duration-200">
+                                <Search className="w-4 h-4 text-slate-500 mr-2" />
+                                <input 
+                                    autoFocus
+                                    type="text" 
+                                    placeholder="Buscar..." 
+                                    className="bg-transparent border-none outline-none text-sm text-slate-800 dark:text-white w-32 md:w-48"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    onBlur={() => !searchQuery && setIsSearchOpen(false)}
+                                />
+                                <button onClick={() => { setIsSearchOpen(false); setSearchQuery(''); }} className="ml-1 hover:text-slate-600"><X className="w-3 h-3" /></button>
+                            </div>
+                        ) : (
+                            <button onClick={() => setIsSearchOpen(true)} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors"><Search className="w-5 h-5" /></button>
+                        )}
+                        
+                        <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
+
+                        <button 
+                            onClick={() => setShowChannelInfo(!showChannelInfo)} 
+                            className={`p-1.5 rounded-md transition-colors ${showChannelInfo ? 'bg-[#7b68ee]/10 text-[#7b68ee] dark:bg-[#7b68ee]/20 dark:text-[#7b68ee]' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                        >
+                            <Info className="w-5 h-5" />
+                        </button>
+                    </div>
+                </header>
+
+                <div className="flex-1 flex overflow-hidden">
+                    <div className="flex-1 flex flex-col min-w-0">
+                        {/* Messages List */}
+                <div className="flex-1 overflow-y-auto px-0 bg-white dark:bg-slate-900">
+                    {currentMessages.length === 0 ? (
+                        <div className="h-full flex flex-col items-center justify-center p-8 text-center">
+                            <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center mb-4 text-slate-400">
+                                {activeChannelIcon}
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">¡Bienvenido a #{activeChannelName}!</h3>
+                            <p className="text-slate-500 dark:text-slate-400 max-w-md">
+                                Este es el comienzo del canal <span className="font-bold">{activeChannelName}</span>. 
+                                {mockChannel?.description || "Envía mensajes, archivos y colabora con tu equipo."}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="pb-4">
+                            {groupedMessages.map((group, gIndex) => (
+                                <div key={gIndex}>
+                                    {/* Date Separator */}
+                                    <div className="relative flex items-center justify-center my-6">
+                                        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200 dark:border-slate-800"></div></div>
+                                        <div className="relative bg-white dark:bg-slate-900 px-4 py-1 rounded-full border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-500 capitalize shadow-sm">
+                                            {group.date}
+                                        </div>
+                                    </div>
+
+                                    {/* Messages in Group */}
+                                    {group.msgs.map((msg, mIndex) => {
+                                        const sender = safeUsers.find(u => u.id === msg.senderId) || { name: 'Usuario', avatar: '' };
+                                        const isMe = msg.senderId === currentUser?.id;
+                                        
+                                        return (
+                                            <div 
+                                                key={msg.id} 
+                                                className={`group relative mx-4 mb-3 p-4 rounded-xl border transition-all duration-200 ${
+                                                    editingMessageId === msg.id 
+                                                    ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200' 
+                                                    : 'bg-white dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-sm'
+                                                }`}
+                                                onMouseEnter={() => setHoveredMessageId(msg.id)}
+                                                onMouseLeave={() => setHoveredMessageId(null)}
+                                            >
+                                                {/* Header: Avatar, Name, Time */}
+                                                <div className="flex items-center gap-3 mb-2">
+                                                    {sender.avatar ? 
+                                                        <img src={sender.avatar} alt="" className="w-8 h-8 rounded-full object-cover ring-2 ring-slate-100 dark:ring-slate-800" /> : 
+                                                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#7b68ee] to-purple-600 flex items-center justify-center text-white font-bold text-xs shadow-sm">{sender.name.charAt(0)}</div>
+                                                    }
+                                                    <div className="flex flex-col leading-tight">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-bold text-slate-900 dark:text-slate-100 text-sm hover:underline cursor-pointer">{sender.name}</span>
+                                                            {isMe && <span className="bg-[#7b68ee]/10 text-[#7b68ee] dark:bg-[#7b68ee]/20 dark:text-[#7b68ee] text-[10px] px-1.5 rounded-full font-medium">Tú</span>}
+                                                        </div>
+                                                        <span className="text-[11px] text-slate-400">{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    </div>
+                                                    
+                                                    {/* Hover Actions */}
+                                                    <div className={`ml-auto flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity ${showEmojiPicker ? 'opacity-0' : ''}`}>
+                                                        <button onClick={() => handleAddReaction(msg.id, '👍')} className="p-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-md text-slate-500 hover:text-[#7b68ee] transition-colors" title="Me gusta"><Smile className="w-3.5 h-3.5" /></button>
+                                                        <button onClick={() => handleReply(msg)} className="p-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-md text-slate-500 hover:text-[#7b68ee] transition-colors" title="Responder"><Reply className="w-3.5 h-3.5" /></button>
+                                                        {isMe && (
+                                                            <>
+                                                                <button onClick={() => startEditing(msg)} className="p-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-md text-slate-500 hover:text-blue-600 transition-colors" title="Editar"><Edit2 className="w-3.5 h-3.5" /></button>
+                                                                <button onClick={() => handleDeleteMessage(msg.id)} className="p-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-md text-slate-500 hover:text-red-600 transition-colors" title="Eliminar"><Trash2 className="w-3.5 h-3.5" /></button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Content */}
+                                                <div className="pl-11">
+                                                    <div className="text-[15px] text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+                                                        {msg.content}
+                                                        {msg.isEdited && <span className="text-[10px] text-slate-400 italic ml-1">(editado)</span>}
+                                                    </div>
+
+                                                    {/* Attachments */}
+                                                    {msg.attachments && msg.attachments.length > 0 && (
+                                                        <div className="mt-3 flex flex-wrap gap-2">
+                                                            {msg.attachments.map((att, i) => (
+                                                                <div key={i} className="group/att relative border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-900 max-w-xs transition-all hover:shadow-md">
+                                                                    {att.type === 'image' ? (
+                                                                        <div className="cursor-pointer relative" onClick={() => setPreviewImage(att.url)}>
+                                                                            <img src={att.url} alt="" className="max-h-48 object-cover" />
+                                                                            <div className="absolute inset-0 bg-black/0 group-hover/att:bg-black/10 transition-colors" />
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="flex items-center gap-3 p-3">
+                                                                            <div className="p-2.5 bg-[#7b68ee]/5 dark:bg-[#7b68ee]/10 text-[#7b68ee] rounded-lg"><FileText className="w-5 h-5" /></div>
+                                                                            <div className="min-w-0">
+                                                                                <p className="font-medium text-sm text-slate-800 dark:text-slate-200 truncate max-w-[140px]">{att.name}</p>
+                                                                                <p className="text-[10px] text-slate-500 font-mono">{att.size}</p>
+                                                                            </div>
+                                                                            <a href={att.url} download={att.name} className="p-2 text-slate-400 hover:text-[#7b68ee] hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full transition-colors ml-2"><Download className="w-4 h-4" /></a>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Reactions (Reddit Style) */}
+                                                    <div className="flex flex-wrap gap-2 mt-3">
+                                                        {msg.reactions && msg.reactions.map((reaction, rIndex) => (
+                                                            <button 
+                                                                key={rIndex}
+                                                                onClick={() => handleAddReaction(msg.id, reaction.emoji)}
+                                                                className={`
+                                                                    flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border transition-all active:scale-95
+                                                                    ${reaction.userIds.includes(currentUser?.id || '') 
+                                                                        ? 'bg-[#7b68ee]/10 dark:bg-[#7b68ee]/20 border-[#7b68ee]/20 dark:border-[#7b68ee]/30 text-[#7b68ee] dark:text-[#7b68ee]' 
+                                                                        : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-200'}
+                                                                `}
+                                                            >
+                                                                <span>{reaction.emoji}</span>
+                                                                <span>{reaction.count}</span>
+                                                            </button>
+                                                        ))}
+                                                        <button 
+                                                            className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-100 hover:text-[#7b68ee] transition-colors"
+                                                            onClick={() => { setShowEmojiPicker(!showEmojiPicker); setHoveredMessageId(msg.id); }}
+                                                        >
+                                                            <Plus className="w-3 h-3" />
+                                                            <span className="hidden group-hover:inline">Reaccionar</span>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ))}
+                            <div ref={messagesEndRef} />
+                        </div>
+                    )}
+                </div>
+
+                {/* Input Area */}
+                <div className="px-5 pb-5 pt-2 bg-white dark:bg-slate-900 shrink-0">
+                    <div className="border border-slate-300 dark:border-slate-700 rounded-xl shadow-sm focus-within:ring-1 focus-within:ring-[#7b68ee]/50 focus-within:border-[#7b68ee] transition-all bg-white dark:bg-slate-800 relative">
+                        {/* Toolbar */}
+                        <div className="flex items-center gap-1 p-1.5 border-b border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-800/50 rounded-t-xl">
+                            <button onClick={() => insertFormat('bold')} className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/50 rounded transition-colors"><Bold className="w-4 h-4" /></button>
+                            <button onClick={() => insertFormat('italic')} className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/50 rounded transition-colors"><Italic className="w-4 h-4" /></button>
+                            <button onClick={() => insertFormat('list')} className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/50 rounded transition-colors"><List className="w-4 h-4" /></button>
+                            <div className="w-px h-4 bg-slate-300 dark:bg-slate-600 mx-1" />
+                            <button onClick={() => insertFormat('link')} className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/50 rounded transition-colors"><Link className="w-4 h-4" /></button>
+                            <button onClick={() => insertFormat('code')} className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/50 rounded transition-colors"><Code className="w-4 h-4" /></button>
+                        </div>
+                        
+                        <textarea
+                            ref={textareaRef}
+                            value={inputText}
+                            onChange={e => setInputText(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder={`Enviar mensaje a #${activeChannelName}`}
+                            rows={1}
+                            className="w-full bg-transparent border-none p-3 text-slate-800 dark:text-slate-200 focus:ring-0 resize-none placeholder-slate-400 text-[15px] min-h-[80px]"
+                        />
+                        
+                        {/* Attachments & Send */}
+                        <div className="flex items-center justify-between p-2">
+                            <div className="flex items-center gap-1">
+                                <button onClick={() => triggerFileUpload(false)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100/50 dark:hover:bg-slate-700/50 rounded-full transition-colors" title="Adjuntar archivo">
+                                    <Plus className="w-5 h-5" />
+                                </button>
+                                <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100/50 dark:hover:bg-slate-700/50 rounded-full transition-colors relative emoji-trigger" title="Emoji">
+                                    <Smile className="w-5 h-5" />
+                                    {showEmojiPicker && (
+                                        <div className="absolute bottom-12 left-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl p-3 grid grid-cols-6 gap-2 w-64 z-50">
+                                            {COMMON_EMOJIS.map(emoji => (
+                                                <button key={emoji} onClick={(e) => { e.stopPropagation(); addEmoji(emoji); setShowEmojiPicker(false); }} className="text-xl hover:bg-slate-100 dark:hover:bg-slate-700 p-1.5 rounded">{emoji}</button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </button>
+                                <button className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100/50 dark:hover:bg-slate-700/50 rounded-full transition-colors" title="Mencionar">
+                                    <AtSign className="w-5 h-5" />
+                                </button>
+                            </div>
+                            
+                            <div className="flex items-center gap-2">
+                                <span className={`text-xs ${inputText.length > 500 ? 'text-red-500' : 'text-slate-400'} font-mono`}>
+                                    {inputText.length > 0 && `${inputText.length} chars`}
+                                </span>
+                                <button
+                                    onClick={() => handleSendMessage()}
+                                    disabled={!inputText.trim() && !editingMessageId}
+                                    className={`p-2 rounded-lg transition-all ${
+                                        inputText.trim() 
+                                        ? 'bg-[#007a5a] text-white hover:bg-[#007a5a]/90 shadow-sm' 
+                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                                    }`}
+                                >
+                                    <Send className="w-4 h-4 fill-current" />
+                                </button>
+                            </div>
+                        </div>
+                        <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
+                    </div>
+                    <div className="text-center mt-2">
+                         <p className="text-[11px] text-slate-400">
+                            <strong>Enter</strong> para enviar, <strong>Shift + Enter</strong> para nueva línea
+                         </p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Right Info Sidebar */}
+            {showChannelInfo && (
+                <div className="w-80 border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col overflow-y-auto animate-in slide-in-from-right duration-300 shrink-0">
+                    <div className="p-5">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="font-bold text-slate-800 dark:text-white">Sobre este canal</h3>
+                            <button onClick={() => setShowChannelInfo(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"><X className="w-5 h-5" /></button>
+                        </div>
+                        
+                        <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 mb-6">
+                            <div className="flex items-center gap-3 mb-3">
+                                <div className="p-2 bg-[#7b68ee]/10 dark:bg-[#7b68ee]/20 rounded-lg text-[#7b68ee] dark:text-[#7b68ee]">
+                                    {activeChannelIcon}
+                                </div>
+                                <div>
+                                    <h4 className="font-bold text-slate-900 dark:text-white text-sm">#{activeChannelName}</h4>
+                                    <p className="text-xs text-slate-500">Creado el {new Date().toLocaleDateString()}</p>
+                                </div>
+                            </div>
+                            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                                {activeChannelDesc || "Sin descripción"}
+                            </p>
+                        </div>
+
+                        <div className="mb-6">
+                            <h4 className="font-bold text-slate-800 dark:text-white text-xs uppercase tracking-wider mb-3">Estadísticas</h4>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg text-center">
+                                    <span className="block text-2xl font-bold text-[#7b68ee] dark:text-[#7b68ee]">{currentMessages.length}</span>
+                                    <span className="text-xs text-slate-500">Mensajes</span>
+                                </div>
+                                <div className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg text-center">
+                                    <span className="block text-2xl font-bold text-[#7b68ee] dark:text-[#7b68ee]">{mockChannel?.members?.length || safeUsers.length}</span>
+                                    <span className="text-xs text-slate-500">Miembros</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h4 className="font-bold text-slate-800 dark:text-white text-xs uppercase tracking-wider mb-3">Miembros</h4>
+                            <div className="space-y-2">
+                                {safeUsers.slice(0, 5).map(u => (
+                                    <div key={u.id} className="flex items-center gap-2 p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer">
+                                        <img src={u.avatar || `https://ui-avatars.com/api/?name=${u.name}`} className="w-8 h-8 rounded-full" alt="" />
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-medium text-slate-800 dark:text-white truncate">{u.name}</p>
+                                            <p className="text-xs text-slate-500 truncate">{u.role}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    </div>
+</div>
+    );
+};
+
+export default TeamChat;
