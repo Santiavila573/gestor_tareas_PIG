@@ -1,7 +1,13 @@
-# Gestor de Tareas Scrum + IA Para el Servicio de Rentas Internas SRI 🚀
+# Gestor de Tareas Scrum + IA Para el Servicio de Rentas Internas SRI 
+🚀
 **Proyecto Integrador de Grado "Desarrollo de Software"**</br>
 **Tecnológico Internacional Universitario I.T.I**
-
+</br>
+<p align="center">
+<img width="129" height="123" alt="image" src="https://github.com/user-attachments/assets/a03de351-b3a6-42f4-bc96-3eb8cf32461d" />
+</p>
+</br>
+</br>
 <img width="1085" height="700" alt="image" src="https://github.com/user-attachments/assets/238b65fe-0ba9-4b84-8b44-1d4d947333e5" />
 </br>
 **Gestor de tareas colaborativo con funcionalidades de IA generativa para la automatización de tareas Scrum**
