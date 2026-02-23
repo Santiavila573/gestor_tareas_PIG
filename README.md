@@ -1,4 +1,4 @@
-# Gestor de Tareas Scrum + IA Para el Servicio de Rentas Internas SRI 
+# Gestor de Tareas Scrum + IA Para el Servicio de Rentas Internas (SRI) 
 
 **Proyecto Integrador de Grado "Desarrollo de Software"**</br>
 **Tecnológico Internacional Universitario I.T.I**
