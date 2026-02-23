@@ -90,7 +90,7 @@ https://github.com/user-attachments/assets/7b5b9409-517e-43e5-a09f-d9696757b37d
 - [Contribuir](#-contribuir)
 - [Contacto / Soporte](#-santiago.avila@iti.edu.ec)
 
-## Licencia MIT
+## 📋 Licencia MIT
 
 Es una licencia de software libre muy popular, permisiva y breve, originada en el Instituto Tecnológico de Massachusetts. Permite usar, </br> modificar, distribuir y vender software (incluso propietario) sin restricciones, siempre que se incluya el aviso de copyright original y el texto de </br> la licencia.
 
