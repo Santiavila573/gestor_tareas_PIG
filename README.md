@@ -3,15 +3,18 @@
 **Proyecto Integrador de Grado "Desarrollo de Software"**</br>
 **Tecnológico Internacional Universitario I.T.I**
 </br>
-<p align="center">
+<p align="left">
 <img width="129" height="123" alt="image" src="https://github.com/user-attachments/assets/a03de351-b3a6-42f4-bc96-3eb8cf32461d" />
-</p>
 </br>
+</br>
+  <img width="1085" src="https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExM213Zm1yZDJ3bWsxZXVyNHgxb3RsZXpnd2xkb3RkaWRkaHI3NWJ0YiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/WMnia0kAKGhgOBPezY/giphy.gif" alt="Teclado animado" width="500"/>
+</p>
 </br>
 <img width="1085" height="700" alt="image" src="https://github.com/user-attachments/assets/238b65fe-0ba9-4b84-8b44-1d4d947333e5" />
 </br>
-**Gestor de tareas colaborativo con funcionalidades de IA generativa para la automatización de tareas Scrum**
 
+## Tema Principal
+- Gestor de tareas colaborativo con funcionalidades de IA generativa para la automatización de tareas Scrum
 
 ## ✨ Características principales
 
@@ -71,6 +74,12 @@
 ![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-43853D?style=for-the-badge&logo=node.js&logoColor=white)
 
+## Video de respaldo (Entrevistas funcionarios SRI)
+
+
+https://github.com/user-attachments/assets/7b5b9409-517e-43e5-a09f-d9696757b37d
+
+
 
 ## 📋 Tabla de contenidos
 
@@ -81,6 +90,9 @@
 - [Contribuir](#-contribuir)
 - [Contacto / Soporte](#-santiago.avila@iti.edu.ec)
 
+## Licencia MIT
+
+Es una licencia de software libre muy popular, permisiva y breve, originada en el Instituto Tecnológico de Massachusetts. Permite usar, </br> modificar, distribuir y vender software (incluso propietario) sin restricciones, siempre que se incluya el aviso de copyright original y el texto de </br> la licencia.
 
 ## 🛠 Instalación
 
@@ -112,3 +124,4 @@ npm run start
 Autor principal: @Santiavila573
 Email institucional: santiago.avila@iti.edu.ec
 Twitter / X: https://x.com/Santis20100
+
