@@ -14,7 +14,7 @@
 </br>
 
 ## Tema Principal
-- Gestor de tareas colaborativo con funcionalidades de IA generativa para la automatización de tareas Scrum
+- Gestor de tareas colaborativo con funcionalidades de IA generativa para la automatización de tareas Scrum para la organización pública: SRI
 
 ## ✨ Características principales
 
